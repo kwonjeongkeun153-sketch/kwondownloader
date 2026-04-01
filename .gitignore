@@ -1,0 +1,16 @@
+.venv/
+.venv_web/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+web_downloads/
+dist/
+build/
+
+bin/
+*.apk
+
+.DS_Store
+Thumbs.db

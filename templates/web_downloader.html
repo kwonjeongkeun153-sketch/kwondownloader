@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kwon Web Downloader</title>
+  <style>
+    :root { --bg:#0f1722; --bg2:#182435; --panel:rgba(15,23,34,.86); --line:rgba(225,235,248,.14); --line2:rgba(225,235,248,.24); --text:#f4f7fb; --muted:#9cafc7; --accent:#f2a33b; --mint:#88d2b6; --danger:#f48979; --r1:28px; --r2:18px; --r3:12px; --shadow:0 30px 70px rgba(0,0,0,.34); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:"Inter","Segoe UI","Pretendard",sans-serif; color:var(--text); background:radial-gradient(circle at 12% 12%, rgba(242,163,59,.18), transparent 24%),radial-gradient(circle at 88% 18%, rgba(136,210,182,.18), transparent 20%),linear-gradient(145deg, #0b1118, #0f1722 45%, #162132); padding:24px; }
+    body.busy { cursor:progress; }
+    .app { width:min(1360px,100%); margin:0 auto; display:grid; gap:22px; }
+    .hero,.panel { border:1px solid var(--line); border-radius:var(--r1); background:var(--panel); box-shadow:var(--shadow); backdrop-filter:blur(16px); }
+    .hero { padding:28px; background:linear-gradient(135deg, rgba(242,163,59,.18), rgba(21,33,50,.9)); }
+    .hero,.panel,.media { animation:rise .7s cubic-bezier(.2,.8,.2,1) both; }
+    .layout .panel:nth-child(1) { animation-delay:.08s; }
+    .layout .panel:nth-child(2) { animation-delay:.14s; }
+    .hero-top,.panel-top,.meta-row,.tag-row,.preview-meta,.buttons,.mode-row,.frame-row,.downloads li { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .pill,.health { display:inline-flex; gap:8px; align-items:center; padding:9px 14px; border:1px solid var(--line); border-radius:999px; font-size:13px; background:rgba(255,255,255,.05); }
+    .health.ok { color:#d9ffef; border-color:rgba(136,210,182,.3); background:rgba(136,210,182,.1); }
+    .health.warn { color:#ffe2dd; border-color:rgba(244,137,121,.3); background:rgba(244,137,121,.1); }
+    h1 { margin:14px 0 8px; font-size:clamp(32px,4vw,52px); line-height:1.03; letter-spacing:-.03em; }
+    h2 { margin:0; font-size:22px; letter-spacing:-.03em; }
+    p { margin:0; color:var(--muted); line-height:1.65; }
+    .chips,.stack,.downloads,.resolved { display:grid; gap:14px; }
+    .chips { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin-top:18px; }
+    .chip { padding:11px 13px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.04); font-size:13px; color:#dbe5f2; text-align:center; }
+    .layout { display:grid; grid-template-columns:minmax(360px,430px) minmax(0,1fr); gap:22px; align-items:start; }
+    .panel { padding:22px; }
+    .sub { color:var(--muted); font-size:13px; }
+    label { display:block; margin-bottom:8px; font-size:13px; color:#dbe5f2; }
+    textarea,input,select,button { font:inherit; }
+    textarea,input[type="text"],select { width:100%; padding:14px 15px; border:1px solid var(--line); border-radius:var(--r3); background:rgba(255,255,255,.045); color:var(--text); outline:none; }
+    textarea { min-height:170px; resize:vertical; line-height:1.55; }
+    textarea:focus,input:focus,select:focus { border-color:rgba(242,163,59,.7); background:rgba(255,255,255,.065); }
+    textarea::placeholder,input::placeholder { color:rgba(156,175,199,.64); }
+    .buttons,.mode-row,.grid2 { display:grid; gap:12px; }
+    .buttons,.mode-row,.grid2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .btn,.mode { border:1px solid var(--line); border-radius:var(--r3); background:rgba(255,255,255,.04); color:var(--text); padding:13px 15px; cursor:pointer; transition:.18s ease; }
+    .btn:hover,.mode:hover { transform:translateY(-1px); border-color:var(--line2); background:rgba(255,255,255,.07); }
+    .btn:disabled,.mode:disabled,textarea:disabled,input:disabled,select:disabled { opacity:.58; cursor:not-allowed; transform:none; }
+    .btn.primary { border-color:rgba(242,163,59,.42); background:linear-gradient(135deg, rgba(242,163,59,.3), rgba(242,163,59,.16)); color:#fff7ea; }
+    .mode { min-height:92px; text-align:left; display:grid; gap:6px; align-content:center; }
+    .mode strong { font-size:17px; }
+    .mode span { color:var(--muted); font-size:13px; line-height:1.45; }
+    .mode.active { border-color:rgba(242,163,59,.52); background:linear-gradient(135deg, rgba(242,163,59,.22), rgba(242,163,59,.08)); }
+    .card { border:1px solid var(--line); border-radius:var(--r2); background:rgba(255,255,255,.03); padding:16px; display:grid; gap:14px; }
+    .card.hidden { display:none; }
+    .grid2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .hint,.muted-mini { color:var(--muted); font-size:12px; line-height:1.55; }
+    .status { min-height:76px; padding:14px 15px; border:1px solid var(--line); border-radius:var(--r3); background:rgba(255,255,255,.04); white-space:pre-wrap; line-height:1.6; }
+    .status.success { border-color:rgba(136,210,182,.28); background:rgba(136,210,182,.1); color:#dcfff0; }
+    .status.error { border-color:rgba(244,137,121,.28); background:rgba(244,137,121,.1); color:#ffe0da; }
+    .downloads { list-style:none; margin:0; padding:0; }
+    .downloads li { border:1px solid var(--line); border-radius:var(--r3); background:rgba(255,255,255,.03); padding:13px 14px; }
+    .downloads a { color:#ffe4b7; text-decoration:none; overflow-wrap:anywhere; }
+    .downloads a:hover { text-decoration:underline; }
+    .preview { display:grid; gap:14px; border:1px solid var(--line); border-radius:var(--r2); background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); padding:18px; }
+    .preview-box { min-height:290px; border:1px solid var(--line); border-radius:var(--r2); overflow:hidden; display:grid; place-items:center; background:linear-gradient(180deg, rgba(10,15,22,.86), rgba(10,15,22,.68)); }
+    .preview-box img { width:100%; height:100%; max-height:520px; object-fit:contain; display:block; animation:image-in .34s ease both; }
+    .empty { padding:26px; text-align:center; color:var(--muted); line-height:1.7; }
+    .resolved { min-height:120px; }
+    .media { display:grid; grid-template-columns:190px minmax(0,1fr); gap:16px; border:1px solid var(--line); border-radius:var(--r2); background:rgba(21,31,46,.92); overflow:hidden; }
+    .media.error { border-color:rgba(244,137,121,.3); }
+    .thumb { min-height:154px; background:linear-gradient(180deg, rgba(242,163,59,.16), rgba(16,23,34,.18)), #162130; display:grid; place-items:center; }
+    .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+    .thumb-fallback { color:rgba(244,247,251,.62); font-size:13px; letter-spacing:.06em; text-transform:uppercase; }
+    .copy { padding:16px 16px 16px 0; display:grid; gap:11px; min-width:0; }
+    .eyebrow { color:#f7ca84; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+    .copy h3 { margin:0; font-size:19px; letter-spacing:-.03em; line-height:1.28; overflow-wrap:anywhere; }
+    .meta-row { justify-content:flex-start; color:var(--muted); font-size:13px; }
+    .tag-row { justify-content:flex-start; }
+    .tag { padding:7px 10px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.03); font-size:12px; color:#d9e5f2; }
+    .frame-row { justify-content:flex-start; }
+    .frame-time { max-width:150px; }
+    .camera { display:inline-flex; align-items:center; gap:9px; }
+    .camera svg,.placeholder svg { width:18px; height:18px; flex:0 0 auto; }
+    .placeholder svg { width:44px; height:44px; justify-self:center; opacity:.68; }
+    .error-text { color:#ffd1ca; font-size:13px; line-height:1.55; padding:12px 13px; border-radius:var(--r3); border:1px solid rgba(244,137,121,.22); background:rgba(244,137,121,.08); }
+    @keyframes rise { from { opacity:0; transform:translateY(18px) scale(.99); } to { opacity:1; transform:translateY(0) scale(1); } }
+    @keyframes image-in { from { opacity:0; transform:scale(.985); } to { opacity:1; transform:scale(1); } }
+    @media (prefers-reduced-motion: reduce) { .hero,.panel,.media,.preview-box img,.btn,.mode { animation:none !important; transition:none !important; } }
+    @media (max-width:1120px) { .layout { grid-template-columns:1fr; } }
+    @media (max-width:760px) { body { padding:16px; } .hero,.panel { padding:18px; } .buttons,.mode-row,.grid2 { grid-template-columns:1fr; } .media { grid-template-columns:1fr; } .copy { padding:0 16px 16px; } .thumb { min-height:210px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div class="hero-top">
+        <div class="pill">KWON DOWNLOADER WEB</div>
+        <div class="health" id="healthPill">환경 확인 중...</div>
+      </div>
+      <h1>yt-dlp 기반 웹 유튜브 다운로더</h1>
+      <p>오디오는 여러 형식과 비트레이트로, 영상은 컨테이너/화질/FPS 기준으로 내려받을 수 있게 구성했습니다. 분석 카드의 카메라 버튼으로 원하는 시점의 프레임도 즉석에서 추출해 미리볼 수 있습니다.</p>
+      <div class="chips">
+        <div class="chip">Audio: MP3 / WAV / M4A / FLAC / OPUS / AAC</div>
+        <div class="chip">Video: MP4 / MKV / WEBM + 360p~4K + FPS</div>
+        <div class="chip">Frame Extract: 시점 입력 후 미리보기</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <section class="panel">
+        <div class="panel-top">
+          <h2>다운로드 설정</h2>
+          <div class="sub">여러 URL을 줄바꿈으로 입력해주세요.</div>
+        </div>
+        <div class="stack">
+          <div>
+            <label for="urls">YouTube URL 목록</label>
+            <textarea id="urls" placeholder="https://www.youtube.com/watch?v=...
+https://youtu.be/...
+https://www.youtube.com/watch?v=..."></textarea>
+          </div>
+
+          <div class="buttons">
+            <button class="btn" id="btnResolve" type="button">URL 분석하기</button>
+            <button class="btn" id="btnClear" type="button">입력 비우기</button>
+          </div>
+
+          <div class="mode-row">
+            <button class="mode active" id="modeAudio" type="button"><strong>Audio</strong><span>오디오 형식과 비트레이트 중심 추출</span></button>
+            <button class="mode" id="modeVideo" type="button"><strong>Video</strong><span>컨테이너, 화질, FPS 기준 다운로드</span></button>
+          </div>
+
+          <div class="card" id="audioPanel">
+            <div class="grid2">
+              <div><label for="audioFormat">오디오 형식</label><select id="audioFormat"></select></div>
+              <div><label for="audioQuality">오디오 품질</label><select id="audioQuality"></select></div>
+            </div>
+            <div class="hint">`WAV`와 `FLAC`은 용량이 크게 나올 수 있습니다.</div>
+          </div>
+
+          <div class="card hidden" id="videoPanel">
+            <div class="grid2">
+              <div><label for="videoContainer">비디오 컨테이너</label><select id="videoContainer"></select></div>
+              <div><label for="videoQuality">최대 화질</label><select id="videoQuality"></select></div>
+              <div><label for="videoFps">FPS 선호</label><select id="videoFps"></select></div>
+            </div>
+            <div class="hint">원본에 없는 화질/FPS는 가장 가까운 값으로 선택됩니다.</div>
+          </div>
+
+          <button class="btn primary" id="btnDownload" type="button">오디오 다운로드 시작</button>
+          <div class="status" id="statusBox">준비 완료. URL을 넣고 분석하거나 바로 다운로드할 수 있습니다.</div>
+
+          <div class="panel-top" style="margin-top:4px;">
+            <h2 style="font-size:18px;">다운로드 결과</h2>
+            <div class="sub" id="downloadSummary">아직 생성된 파일이 없습니다.</div>
+          </div>
+          <ul class="downloads" id="downloadsList"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="stack">
+          <div class="preview">
+            <div class="preview-meta">
+              <div>
+                <h2 style="font-size:20px;">프레임 미리보기</h2>
+                <div class="sub" id="frameMeta">아직 추출된 프레임이 없습니다.</div>
+              </div>
+              <div class="sub">카드에서 시점을 입력하고 카메라 버튼을 눌러주세요.</div>
+            </div>
+            <div class="preview-box" id="previewBox">
+              <div class="empty placeholder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l1.7-2h6.6L17 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                <div>프레임 추출 결과가 여기 표시됩니다.<br>분석 카드의 카메라 버튼으로 원하는 장면을 뽑아보세요.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-top">
+            <h2>분석된 영상</h2>
+            <div class="sub" id="analysisCount">0개 항목</div>
+          </div>
+          <div class="resolved" id="resolvedList">
+            <div class="empty">URL 분석 후 제목, 채널, 길이, 감지된 화질/FPS 정보를 여기서 바로 확인할 수 있습니다.</div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const cameraIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l1.7-2h6.6L17 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+    const previewPlaceholder = '<div class="empty placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l1.7-2h6.6L17 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"></path><circle cx="12" cy="13" r="4"></circle></svg><div>프레임 추출 결과가 여기 표시됩니다.<br>분석 카드의 카메라 버튼으로 원하는 장면을 뽑아보세요.</div></div>';
+    const state = { busy:false, mode:'audio', options:null };
+    const els = { body:document.body, healthPill:$('healthPill'), urls:$('urls'), btnResolve:$('btnResolve'), btnClear:$('btnClear'), btnDownload:$('btnDownload'), modeAudio:$('modeAudio'), modeVideo:$('modeVideo'), audioPanel:$('audioPanel'), videoPanel:$('videoPanel'), audioFormat:$('audioFormat'), audioQuality:$('audioQuality'), videoContainer:$('videoContainer'), videoQuality:$('videoQuality'), videoFps:$('videoFps'), statusBox:$('statusBox'), downloadsList:$('downloadsList'), downloadSummary:$('downloadSummary'), previewBox:$('previewBox'), frameMeta:$('frameMeta'), analysisCount:$('analysisCount'), resolvedList:$('resolvedList') };
+    const controls = [els.urls, els.btnResolve, els.btnClear, els.btnDownload, els.modeAudio, els.modeVideo, els.audioFormat, els.audioQuality, els.videoContainer, els.videoQuality, els.videoFps];
+
+    function escapeHtml(value) { return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
+    function setBusy(next) { state.busy = next; els.body.classList.toggle('busy', next); controls.forEach((el) => { el.disabled = next; }); els.resolvedList.querySelectorAll('button,input').forEach((el) => { el.disabled = next; }); }
+    function setStatus(message, tone = '') { els.statusBox.className = `status${tone ? ` ${tone}` : ''}`; els.statusBox.textContent = message; }
+    function getUrls() { return els.urls.value.split(/\r?\n/g).map((x) => x.trim()).filter(Boolean); }
+    function populateSelect(select, items, selected) { select.innerHTML = ''; items.forEach((item) => { const option = document.createElement('option'); option.value = item.value; option.textContent = item.label; if (item.value === selected) option.selected = true; select.appendChild(option); }); }
+    function selectedSummary() { if (state.mode === 'audio') { return `${els.audioFormat.value.toUpperCase()} / ${els.audioQuality.value === '0' ? 'Best' : `${els.audioQuality.value} kbps`}`; } return `${els.videoContainer.value.toUpperCase()} / ${els.videoQuality.value === 'best' ? 'Best' : `${els.videoQuality.value}p`} / ${els.videoFps.value === 'best' ? 'Best fps' : `${els.videoFps.value} fps`}`; }
+    function setMode(next) { state.mode = next; const audio = next === 'audio'; els.modeAudio.classList.toggle('active', audio); els.modeVideo.classList.toggle('active', !audio); els.audioPanel.classList.toggle('hidden', !audio); els.videoPanel.classList.toggle('hidden', audio); els.btnDownload.textContent = audio ? '오디오 다운로드 시작' : '비디오 다운로드 시작'; els.downloadSummary.textContent = `현재 옵션: ${selectedSummary()}`; }
+    function renderDownloads(files) { els.downloadsList.innerHTML = ''; if (!files.length) { els.downloadSummary.textContent = '아직 생성된 파일이 없습니다.'; return; } const frag = document.createDocumentFragment(); files.forEach((file) => { const li = document.createElement('li'); li.innerHTML = `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(file.name)}</a><span class="sub">다운로드 링크</span>`; frag.appendChild(li); }); els.downloadsList.appendChild(frag); els.downloadSummary.textContent = `${files.length}개 파일 준비됨`; }
+    function renderPreview(data) { const joiner = data.preview_url.includes('?') ? '&' : '?'; els.previewBox.innerHTML = `<img src="${escapeHtml(`${data.preview_url}${joiner}t=${Date.now()}`)}" alt="Frame preview">`; els.frameMeta.textContent = `${data.title} · ${data.timestamp}`; }
+    function renderResolved(items) {
+      els.analysisCount.textContent = `${items.length}개 항목`;
+      if (!items.length) { els.resolvedList.innerHTML = '<div class="empty">유효한 URL이 없으면 분석 결과가 여기에 표시되지 않습니다.</div>'; return; }
+      els.resolvedList.innerHTML = items.map((item, index) => {
+        const qualities = item.format_summary?.video_qualities?.length ? item.format_summary.video_qualities.join(' / ') : '감지된 화질 정보 없음';
+        const fps = item.format_summary?.fps?.length ? `${item.format_summary.fps.join(', ')} fps` : 'FPS 정보 없음';
+        const audioExts = item.format_summary?.audio_exts?.length ? item.format_summary.audio_exts.join(', ').toUpperCase() : '오디오 정보 없음';
+        const videoExts = item.format_summary?.video_exts?.length ? item.format_summary.video_exts.join(', ').toUpperCase() : '비디오 정보 없음';
+        return `<article class="media${item.error ? ' error' : ''}" style="animation-delay:${Math.min(index * 60, 360)}ms"><div class="thumb">${item.thumbnail ? `<img src="${escapeHtml(item.thumbnail)}" alt="${escapeHtml(item.title)} 썸네일" loading="lazy">` : '<div class="thumb-fallback">No Preview</div>'}</div><div class="copy"><div class="eyebrow">Item ${String(index + 1).padStart(2, '0')}</div><h3 title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h3><div class="meta-row"><span>${escapeHtml(item.channel || '채널 정보 없음')}</span><span>•</span><span>${escapeHtml(item.duration_text || '--:--')}</span></div><div class="tag-row"><span class="tag">Video: ${escapeHtml(qualities)}</span><span class="tag">FPS: ${escapeHtml(fps)}</span><span class="tag">Audio: ${escapeHtml(audioExts)}</span><span class="tag">Source: ${escapeHtml(videoExts)}</span></div><div class="frame-row"><input class="frame-time" type="text" value="${escapeHtml(item.default_frame_time || '00:15')}" placeholder="00:15" aria-label="프레임 추출 시점"><button class="btn camera" type="button" data-action="extract-frame" data-url="${escapeHtml(item.url)}">${cameraIcon}<span>프레임 추출</span></button></div>${item.error ? `<div class="error-text">${escapeHtml(item.error)}</div>` : '<div class="muted-mini">시점은 초 또는 HH:MM:SS 형태로 입력할 수 있습니다.</div>'}</div></article>`;
+      }).join('');
+    }
+
+    async function loadBootstrap() {
+      try {
+        const [optRes, healthRes] = await Promise.all([fetch('/api/options'), fetch('/api/health')]);
+        const options = await optRes.json();
+        const health = await healthRes.json();
+        state.options = options;
+        populateSelect(els.audioFormat, options.audio_formats, options.defaults.audio_format);
+        populateSelect(els.audioQuality, options.audio_qualities, options.defaults.audio_quality);
+        populateSelect(els.videoContainer, options.video_containers, options.defaults.video_container);
+        populateSelect(els.videoQuality, options.video_qualities, options.defaults.video_quality);
+        populateSelect(els.videoFps, options.video_fps, options.defaults.video_fps);
+        if (health.ffmpeg_dir) { els.healthPill.className = 'health ok'; els.healthPill.textContent = `ffmpeg 연결됨 · ${health.ffmpeg_dir}`; } else { els.healthPill.className = 'health warn'; els.healthPill.textContent = 'ffmpeg 없음 · 오디오 변환/프레임 추출 제한'; }
+        setMode(options.defaults.mode || 'audio');
+      } catch (error) {
+        els.healthPill.className = 'health warn';
+        els.healthPill.textContent = '초기 설정 불러오기 실패';
+        setStatus(`초기 설정을 불러오지 못했습니다.\n${error}`, 'error');
+      }
+    }
+
+    async function resolveUrls() {
+      if (state.busy) return;
+      const urls = getUrls();
+      if (!urls.length) { setStatus('먼저 YouTube URL을 하나 이상 입력해주세요.', 'error'); return; }
+      setBusy(true);
+      setStatus('URL을 분석해서 제목, 썸네일, 포맷 정보를 불러오는 중입니다...');
+      try {
+        const res = await fetch('/api/resolve', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ urls }) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || '분석에 실패했습니다.');
+        renderResolved(data.items || []);
+        if (data.errors?.length) { setStatus(`분석 완료. ${data.items.length}개 항목을 확인했고 ${data.errors.length}개 URL에서 오류가 있었습니다.\n${data.errors.slice(0, 3).join('\n')}`, 'error'); } else { setStatus(`분석 완료. ${data.items.length}개 항목을 불러왔습니다.`, 'success'); }
+      } catch (error) {
+        setStatus(`분석 중 오류가 발생했습니다.\n${error}`, 'error');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function downloadNow() {
+      if (state.busy) return;
+      const urls = getUrls();
+      if (!urls.length) { setStatus('다운로드할 URL을 먼저 입력해주세요.', 'error'); return; }
+      setBusy(true);
+      setStatus(`다운로드를 시작합니다.\n선택 옵션: ${selectedSummary()}`);
+      try {
+        const res = await fetch('/api/download', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ urls, mode:state.mode, audio_format:els.audioFormat.value, audio_quality:els.audioQuality.value, video_container:els.videoContainer.value, video_quality:els.videoQuality.value, video_fps:els.videoFps.value }) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || '다운로드에 실패했습니다.');
+        renderDownloads(data.files || []);
+        const extra = data.errors?.length ? `\n실패 ${data.errors.length}개:\n${data.errors.slice(0, 3).join('\n')}` : '';
+        setStatus(`다운로드 완료. ${data.count}개 파일이 준비되었습니다.\n선택 옵션: ${selectedSummary()}${extra}`, data.errors?.length ? 'error' : 'success');
+      } catch (error) {
+        setStatus(`다운로드 중 오류가 발생했습니다.\n${error}`, 'error');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function extractFrame(url, timestamp) {
+      if (state.busy) return;
+      setBusy(true);
+      setStatus(`프레임을 추출하는 중입니다.\n선택 시점: ${timestamp || '자동'}`);
+      try {
+        const res = await fetch('/api/frame-preview', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ url, timestamp }) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || '프레임 추출에 실패했습니다.');
+        renderPreview(data);
+        setStatus(`프레임 추출 완료.\n${data.title} · ${data.timestamp}`, 'success');
+      } catch (error) {
+        setStatus(`프레임 추출 중 오류가 발생했습니다.\n${error}`, 'error');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function clearAll() {
+      if (state.busy) return;
+      els.urls.value = '';
+      renderResolved([]);
+      renderDownloads([]);
+      els.previewBox.innerHTML = previewPlaceholder;
+      els.frameMeta.textContent = '아직 추출된 프레임이 없습니다.';
+      setStatus('입력과 결과를 비웠습니다. 다시 시작할 수 있습니다.');
+    }
+
+    els.modeAudio.addEventListener('click', () => setMode('audio'));
+    els.modeVideo.addEventListener('click', () => setMode('video'));
+    els.btnResolve.addEventListener('click', resolveUrls);
+    els.btnDownload.addEventListener('click', downloadNow);
+    els.btnClear.addEventListener('click', clearAll);
+    els.resolvedList.addEventListener('click', (event) => {
+      const button = event.target.closest("[data-action='extract-frame']");
+      if (!button) return;
+      const card = button.closest('.media');
+      const input = card?.querySelector('.frame-time');
+      extractFrame(button.dataset.url || '', input?.value || '');
+    });
+    [els.audioFormat, els.audioQuality, els.videoContainer, els.videoQuality, els.videoFps].forEach((element) => { element.addEventListener('change', () => { els.downloadSummary.textContent = `현재 옵션: ${selectedSummary()}`; }); });
+    loadBootstrap().then(() => {
+      if (state.options) {
+        els.downloadSummary.textContent = `현재 옵션: ${selectedSummary()}`;
+      }
+    });
+  </script>
+</body>
+</html>
