@@ -1,2 +1,3 @@
 Flask==3.1.1
 yt-dlp
+gunicorn==23.0.0

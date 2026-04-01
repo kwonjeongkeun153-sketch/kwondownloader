@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: kwondownloader
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health

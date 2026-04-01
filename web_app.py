@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -119,6 +121,10 @@ def _find_binary(executable_name: str) -> Path | None:
     for candidate in candidates:
         if candidate.exists():
             return candidate.resolve()
+
+    system_path = shutil.which(executable_name)
+    if system_path:
+        return Path(system_path).resolve()
     return None
 
 
@@ -787,4 +793,5 @@ def api_health():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=False)
+    port = int(os.environ.get("PORT", "8000"))
+    app.run(host="0.0.0.0", port=port, debug=False)
