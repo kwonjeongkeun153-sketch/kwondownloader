@@ -40,6 +40,22 @@ Then open:
 - Downloaded files are stored in `web_downloads`.
 - Frame previews are stored in `web_downloads\_frame_previews`.
 
+## Public Link From Your PC
+
+If you want anyone to access it through a public link while your PC is on:
+
+```powershell
+.\run_public_web.ps1
+```
+
+This starts the local web app and a Cloudflare quick tunnel, then prints a public `https://...trycloudflare.com` URL.
+
+To stop it:
+
+```powershell
+.\stop_public_web.ps1
+```
+
 ## Key Files
 
 - `web_app.py`
