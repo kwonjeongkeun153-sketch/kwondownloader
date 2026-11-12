@@ -20,6 +20,8 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
+from pocket_api import init_app
+init_app(app)
 
 AUDIO_FORMATS = [
     {
@@ -795,3 +797,4 @@ def api_health():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
     app.run(host="0.0.0.0", port=port, debug=False)
+
