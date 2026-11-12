@@ -51,10 +51,12 @@ def clean_url(value):
 def error_message(exc):
     raw = re.sub(r'\x1b\[[0-9;]*m', '', str(exc))
     low = raw.lower()
-    if any(x in low for x in ('confirm you', 'not a bot', 'sign in', 'login required')):
+    if any(x in low for x in ('sign in to confirm', 'not a bot', 'login required')):
         return 'YouTube에서 서버의 접근을 제한했습니다. 이 서버에서는 현재 해당 영상을 받을 수 없습니다.'
     if any(x in low for x in ('private video', 'members-only', 'age-restricted', 'unavailable', 'copyright')):
         return '비공개·접근 제한 또는 사용할 수 없는 영상입니다.'
+    if 'failed to extract any player response' in low:
+        return '유튜브 영상 정보를 읽지 못했습니다. 다운로드 엔진에서 영상 응답을 처리하지 못했습니다.'
     if 'cancelled' in low:
         return '다운로드를 취소했습니다.'
     if '800' in low or 'two hours' in low:
