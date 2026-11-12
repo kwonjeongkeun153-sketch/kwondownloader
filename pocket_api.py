@@ -5,6 +5,7 @@ import copy
 import json
 import subprocess
 import hmac
+import importlib.metadata
 import os
 import re
 import shutil
@@ -144,6 +145,43 @@ def health():
     from yt_dlp.version import __version__
     delay = provider_retry_after()
     return jsonify(ok=True, engine=__version__, ffmpeg=bool(shutil.which('ffmpeg')), javascript=bool(shutil.which('node')), retention_seconds=TTL, max_bytes=MAX_BYTES, provider=dict(error=PROVIDER_ERROR if delay else None, retry_after=delay))
+
+@api.post('/diagnostics')
+def diagnostics():
+    """Owner-token-only transport check; intentionally absent from the public Site proxy."""
+    from yt_dlp.networking import Request
+    from yt_dlp.networking.exceptions import HTTPError
+    try:
+        url = clean_url((request.get_json(silent=True) or {}).get('url'))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    if not INFO_GATE.acquire(blocking=False):
+        return jsonify(error='busy'), 429
+    report = {'proxy_env_names': [name for name in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy') if os.environ.get(name)]}
+    try:
+        report['ejs_version'] = importlib.metadata.version('yt-dlp-ejs')
+        report['node_version'] = subprocess.check_output(['node','--version'],text=True,timeout=5).strip()
+        with yt_dlp.YoutubeDL(options()) as ydl:
+            try:
+                response = ydl.urlopen(Request(url))
+            except HTTPError as exc:
+                response = exc.response
+            report['status'] = response.status
+            report['response_host'] = urlsplit(response.url).hostname
+            report['headers'] = {key:response.headers.get(key) for key in ('server','content-type','retry-after','via')}
+            body = response.read(8192).decode('utf-8',errors='replace')
+            response.close()
+            title = re.search(r'<title[^>]*>(.*?)</title>',body,re.I|re.S)
+            report['title'] = title.group(1)[:150] if title else None
+            report['markers'] = [text for text in ('unusual traffic','automated queries','captcha','network policy','Access Denied','Forbidden','Too Many Requests','ytInitialPlayerResponse','proxy') if text.lower() in body.lower()]
+            preview = re.sub(r'<[^>]+>',' ',body)
+            preview = re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','[IP]',preview)
+            report['body_preview'] = re.sub(r'\s+',' ',preview).strip()[:350]
+        return jsonify(report)
+    except Exception as exc:
+        return jsonify(**report, error=type(exc).__name__+': '+str(exc)[:200]), 502
+    finally:
+        INFO_GATE.release()
 
 @api.post('/info')
 def info():
