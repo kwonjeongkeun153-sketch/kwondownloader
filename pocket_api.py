@@ -64,7 +64,7 @@ def error_message(exc):
     return ('다운로드 서버 오류: ' + raw[-350:])
 
 def options():
-    return dict(quiet=True, no_warnings=True, noplaylist=True, socket_timeout=15,
+    return dict(quiet=True, no_warnings=False, noplaylist=True, socket_timeout=15,
                 retries=2, extractor_retries=1, fragment_retries=2,
                 js_runtimes={'node': {}}, cachedir=False)
 
@@ -111,6 +111,7 @@ def info():
         heights = sorted({f['height'] for f in data.get('formats', []) if f.get('height') and f.get('vcodec') != 'none'})
         return jsonify(id=data['id'], url=url, title=data.get('title'), channel=data.get('channel') or data.get('uploader'), duration=data.get('duration'), thumbnail='https://i.ytimg.com/vi/' + data['id'] + '/hqdefault.jpg', heights=heights)
     except Exception as exc:
+        print('POCKET extraction error: ' + str(exc), flush=True)
         return jsonify(error=error_message(exc)), 422
     finally:
         INFO_GATE.release()
