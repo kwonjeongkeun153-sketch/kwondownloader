@@ -5,7 +5,6 @@ import copy
 import json
 import subprocess
 import hmac
-import importlib.metadata
 import os
 import re
 import shutil
@@ -17,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import yt_dlp
+from yt_dlp.networking.exceptions import HTTPError
 from flask import Blueprint, jsonify, request, send_file
 
 api = Blueprint('pocket', __name__, url_prefix='/api/pocket')
@@ -32,7 +32,10 @@ TTL = 3600
 MAX_BYTES = 800 * 1024 * 1024
 ACTIVE = {'queued', 'starting', 'downloading', 'processing'}
 PROVIDER_BLOCKED_UNTIL = 0
-PROVIDER_ERROR = 'YouTube가 다운로드 서버의 요청을 제한했습니다(HTTP 429). 잠시 후 다시 시도해 주세요. 현재 서버에서는 다운로드를 진행할 수 없습니다.'
+PROVIDER_ERROR = 'YouTube가 다운로드 서버의 요청을 제한했습니다(HTTP 429). 현재 서버에서는 다운로드할 수 없습니다. 휴대폰 직접 실행 기능을 이용할 수 있습니다.'
+CAPTCHA_ERROR = 'Google이 다운로드 서버에 사람 확인(CAPTCHA)을 요구하고 있습니다. 현재 서버에서는 다운로드할 수 없습니다. 휴대폰 직접 실행 기능은 별도 앱 설치가 필요합니다.'
+PROVIDER_CODE = 'provider_rate_limited'
+PROVIDER_MESSAGE = PROVIDER_ERROR
 
 class ProviderAccessError(RuntimeError):
     pass
@@ -42,7 +45,7 @@ def provider_retry_after():
 
 def provider_response():
     delay = provider_retry_after()
-    response = jsonify(error=PROVIDER_ERROR, code='provider_rate_limited', retry_after=delay)
+    response = jsonify(error=PROVIDER_MESSAGE, code=PROVIDER_CODE, retry_after=delay)
     response.status_code = 429
     response.headers['Retry-After'] = str(delay)
     return response
@@ -72,7 +75,9 @@ def clean_url(value):
 def error_message(exc):
     raw = re.sub(r'\x1b\[[0-9;]*m', '', str(exc))
     low = raw.lower()
-    if isinstance(exc, ProviderAccessError) or 'http error 429' in low:
+    if isinstance(exc, ProviderAccessError):
+        return str(exc)
+    if 'http error 429' in low:
         return PROVIDER_ERROR
     if 'http error 403' in low:
         return 'YouTube에서 서버의 파일 접근을 거부했습니다(HTTP 403). 현재 이 서버에서는 해당 파일을 받을 수 없습니다.'
@@ -92,12 +97,14 @@ class ExtractorLogger:
     def __init__(self): self.messages = []
     def debug(self, message): pass
     def warning(self, message):
-        global PROVIDER_BLOCKED_UNTIL
+        global PROVIDER_BLOCKED_UNTIL, PROVIDER_CODE, PROVIDER_MESSAGE
         self.messages.append(str(message))
         print('POCKET yt-dlp warning: ' + str(message), flush=True)
         if 'http error 429' in str(message).lower():
             with LOCK:
                 PROVIDER_BLOCKED_UNTIL = time.time() + 300
+                PROVIDER_CODE = 'provider_rate_limited'
+                PROVIDER_MESSAGE = PROVIDER_ERROR
             # Stop extraction immediately rather than retrying a rate-limited host.
             raise ProviderAccessError(PROVIDER_ERROR)
     def error(self, message):
@@ -109,6 +116,28 @@ def options(logger=None):
     return dict(quiet=True, no_warnings=False, noplaylist=True, socket_timeout=15,
                 retries=2, extractor_retries=1, fragment_retries=2,
                 js_runtimes={'node': {}}, cachedir=False, logger=logger or ExtractorLogger())
+
+class PocketYoutubeDL(yt_dlp.YoutubeDL):
+    def urlopen(self, req):
+        global PROVIDER_BLOCKED_UNTIL, PROVIDER_CODE, PROVIDER_MESSAGE
+        try:
+            return super().urlopen(req)
+        except HTTPError as exc:
+            if exc.status != 429:
+                raise
+            # Inspect the denial already returned; do not make another request.
+            host = (urlsplit(exc.response.url).hostname or '').lower()
+            try:
+                body = exc.response.read(16384).decode('utf-8',errors='replace').lower()
+            finally:
+                exc.close()
+            challenge = (host=='google.com' or host.endswith('.google.com')) and 'captcha' in body and 'unusual traffic' in body
+            with LOCK:
+                PROVIDER_BLOCKED_UNTIL = time.time() + (1800 if challenge else 300)
+                PROVIDER_CODE = 'provider_human_verification' if challenge else 'provider_rate_limited'
+                PROVIDER_MESSAGE = CAPTCHA_ERROR if challenge else PROVIDER_ERROR
+            print('POCKET upstream denied: '+json.dumps({'status':429,'host':host,'code':PROVIDER_CODE}),flush=True)
+            raise ProviderAccessError(PROVIDER_MESSAGE) from exc
 
 def cleanup():
     now = time.time()
@@ -144,44 +173,7 @@ def public_job(j):
 def health():
     from yt_dlp.version import __version__
     delay = provider_retry_after()
-    return jsonify(ok=True, engine=__version__, ffmpeg=bool(shutil.which('ffmpeg')), javascript=bool(shutil.which('node')), retention_seconds=TTL, max_bytes=MAX_BYTES, provider=dict(error=PROVIDER_ERROR if delay else None, retry_after=delay))
-
-@api.post('/diagnostics')
-def diagnostics():
-    """Owner-token-only transport check; intentionally absent from the public Site proxy."""
-    from yt_dlp.networking import Request
-    from yt_dlp.networking.exceptions import HTTPError
-    try:
-        url = clean_url((request.get_json(silent=True) or {}).get('url'))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-    if not INFO_GATE.acquire(blocking=False):
-        return jsonify(error='busy'), 429
-    report = {'proxy_env_names': [name for name in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy') if os.environ.get(name)]}
-    try:
-        report['ejs_version'] = importlib.metadata.version('yt-dlp-ejs')
-        report['node_version'] = subprocess.check_output(['node','--version'],text=True,timeout=5).strip()
-        with yt_dlp.YoutubeDL(options()) as ydl:
-            try:
-                response = ydl.urlopen(Request(url))
-            except HTTPError as exc:
-                response = exc.response
-            report['status'] = response.status
-            report['response_host'] = urlsplit(response.url).hostname
-            report['headers'] = {key:response.headers.get(key) for key in ('server','content-type','retry-after','via')}
-            body = response.read(8192).decode('utf-8',errors='replace')
-            response.close()
-            title = re.search(r'<title[^>]*>(.*?)</title>',body,re.I|re.S)
-            report['title'] = title.group(1)[:150] if title else None
-            report['markers'] = [text for text in ('unusual traffic','automated queries','captcha','network policy','Access Denied','Forbidden','Too Many Requests','ytInitialPlayerResponse','proxy') if text.lower() in body.lower()]
-            preview = re.sub(r'<[^>]+>',' ',body)
-            preview = re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','[IP]',preview)
-            report['body_preview'] = re.sub(r'\s+',' ',preview).strip()[:350]
-        return jsonify(report)
-    except Exception as exc:
-        return jsonify(**report, error=type(exc).__name__+': '+str(exc)[:200]), 502
-    finally:
-        INFO_GATE.release()
+    return jsonify(ok=True, engine=__version__, ffmpeg=bool(shutil.which('ffmpeg')), javascript=bool(shutil.which('node')), retention_seconds=TTL, max_bytes=MAX_BYTES, provider=dict(error=PROVIDER_MESSAGE if delay else None, code=PROVIDER_CODE if delay else None, retry_after=delay))
 
 @api.post('/info')
 def info():
@@ -200,7 +192,7 @@ def info():
         if cached and time.time() - cached['created'] < CACHE_TTL:
             data = copy.deepcopy(cached['info'])
         else:
-            with yt_dlp.YoutubeDL({**options(logger), 'skip_download':True}) as ydl:
+            with PocketYoutubeDL({**options(logger), 'skip_download':True}) as ydl:
                 data = ydl.extract_info(url, download=False)
         if data.get('is_live'):
             return jsonify(error='진행 중인 라이브는 지원하지 않습니다.'), 400
@@ -271,7 +263,7 @@ def run_job(key, url, mode, quality, audio_format='mp3'):
             return 'two hours limit; live streams are unsupported'
     opts = {**media_options(folder,mode,quality,audio_format),'progress_hooks':[progress],'postprocessor_hooks':[post],'match_filter':limit}
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with PocketYoutubeDL(opts) as ydl:
             with LOCK:
                 cached = INFO_CACHE.get(url)
             if cached and time.time()-cached['created'] < CACHE_TTL:
